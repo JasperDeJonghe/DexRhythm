@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drum Machine 🥁</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="script.js"></script>
+</head>
+
+<body>
+    <div class="drum-machine">
+        <h1>Dex <span style="color: #ff4d1c;">Rhythm</span></h1>
+
+        <div class="controls">
+            <div class="control-group transport">
+                <button id="playBtn" aria-label="Play">▶</button>
+
+                <div class="bpm-stepper">
+                    <span class="bpm-tag">BPM</span>
+                    <input type="number" id="bpm" value="120" min="60" max="200">
+                </div>
+
+                <div class="octave-control">
+                    <span class="octave-tag">Octave</span>
+                    <input type="number" id="octaveSelect" value="3" min="1" max="7">
+                </div>
+
+                <button id="clearBtn" class="ghost-btn">Clear</button>
+            </div>
+
+            <div class="control-group mixer">
+                <div class="volume-control">
+                    <div class="volume-head">
+                        <label for="drumVolume">Drums</label>
+                        <span class="volume-value" id="drumVolumeValue">100</span>
+                    </div>
+                    <input type="range" id="drumVolume" min="0" max="1" step="0.01" value="1" data-accent="#ff4d1c">
+                </div>
+
+                <div class="volume-control">
+                    <div class="volume-head">
+                        <label for="synthVolume">Synth</label>
+                        <span class="volume-value" id="synthVolumeValue">100</span>
+                    </div>
+                    <input type="range" id="synthVolume" min="0" max="1" step="0.01" value="1" data-accent="#0f8a7e">
+                </div>
+            </div>
+        </div>
+
+        <div class="grid" id="grid"></div>
+
+        <div id="synthGrid" class="grid synth-grid"></div>
+    </div>
+
+</body>
+
+</html>
