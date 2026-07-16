@@ -4,6 +4,7 @@ const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', '
 
 let synthEnabled = true;
 let drumEnabled = true;
+let pianoEnabled = true;
 
 const octaveFrequencies = {
     1: 32.7,
@@ -31,6 +32,7 @@ const generateSynthNotes = () => {
 };
 
 let synthNotes = generateSynthNotes();
+let pianoNotes = generateSynthNotes(); // same note range as the synth grid
 
 const STEPS = 16;
 
@@ -38,8 +40,10 @@ const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 let gridEl;
 let synthGridEl;
+let pianoGridEl;
 let synthRowsEl;
 let drumRowsEl;
+let pianoRowsEl;
 
 const soundFiles = {
     0: 'sounds/bass.mp3',
@@ -62,6 +66,17 @@ drumMasterGain.connect(audioCtx.destination);
 
 const synthMasterGain = audioCtx.createGain();
 synthMasterGain.connect(audioCtx.destination);
+
+// Piano gets its own soft lowpass on the master bus, since a real
+// piano's high harmonics roll off with the soundboard/lid rather
+// than staying bright the way a synth oscillator does.
+const pianoMasterGain = audioCtx.createGain();
+const pianoTone = audioCtx.createBiquadFilter();
+pianoTone.type = 'lowpass';
+pianoTone.frequency.value = 5200;
+pianoTone.Q.value = 0.3;
+pianoTone.connect(audioCtx.destination);
+pianoMasterGain.connect(pianoTone);
 
 let isPlaying = false;
 let currentStep = 0;
@@ -124,6 +139,19 @@ const scheduleStep = (stepNumber, time) => {
         }
     }
 
+    // piano
+    if (pianoEnabled) {
+        let pianoRowIndex = 0;
+        for (const row of pianoRowsEl.children) {
+            const cells = row.querySelectorAll('.cell');
+            const cell = cells[stepNumber];
+            if (cell.classList.contains('active')) {
+                playPianoNote(pianoNotes[pianoRowIndex].freq, time);
+            }
+            pianoRowIndex++;
+        }
+    }
+
     const delay = (time - audioCtx.currentTime) * 1000;
     const id = setTimeout(() => {
         if (isPlaying) highlightStep(stepNumber);
@@ -159,9 +187,13 @@ const play = () => {
 
 const loadSounds = async () => {
     for (const row in soundFiles) {
-        const response = await fetch(soundFiles[row]);
-        const arrayBuffer = await response.arrayBuffer();
-        buffers[row] = await audioCtx.decodeAudioData(arrayBuffer);
+        try {
+            const response = await fetch(soundFiles[row]);
+            const arrayBuffer = await response.arrayBuffer();
+            buffers[row] = await audioCtx.decodeAudioData(arrayBuffer);
+        } catch (err) {
+            // sample assets aren't bundled in every environment
+        }
     }
 };
 
@@ -200,6 +232,77 @@ const playSynthNote = (freq, time, duration = 0.2) => {
     osc.stop(now + duration + 0.05);
 };
 
+// Additive piano synthesis: a stack of sine partials (the fundamental
+// plus overtones) each with its own decay, since in a real piano the
+// higher partials die out faster than the fundamental. A short, brighter
+// "hammer strike" transient is layered on top of the attack for realism.
+const pianoHarmonics = [
+    { mult: 1, gain: 0.55, decayMult: 1.0 },
+    { mult: 2, gain: 0.3, decayMult: 0.75 },
+    { mult: 3, gain: 0.16, decayMult: 0.55 },
+    { mult: 4, gain: 0.1, decayMult: 0.42 },
+    { mult: 5, gain: 0.06, decayMult: 0.32 },
+    { mult: 6, gain: 0.04, decayMult: 0.24 },
+    { mult: 7, gain: 0.025, decayMult: 0.18 },
+    { mult: 8, gain: 0.015, decayMult: 0.14 },
+];
+
+const playPianoNote = (freq, time, duration = 1.8) => {
+    const now = time || audioCtx.currentTime;
+
+    const noteBus = audioCtx.createGain();
+    noteBus.gain.value = 1;
+    noteBus.connect(pianoMasterGain);
+
+    pianoHarmonics.forEach(({ mult, gain, decayMult }) => {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        // a touch of inharmonicity, like real piano strings, so upper
+        // partials aren't perfectly locked to the fundamental
+        osc.frequency.value = freq * mult * (1 + 0.0004 * mult * mult);
+
+        const partialGain = audioCtx.createGain();
+        const decay = Math.max(0.15, duration * decayMult);
+
+        partialGain.gain.setValueAtTime(0, now);
+        partialGain.gain.linearRampToValueAtTime(gain, now + 0.006);
+        partialGain.gain.exponentialRampToValueAtTime(0.0008, now + decay);
+
+        osc.connect(partialGain);
+        partialGain.connect(noteBus);
+
+        osc.start(now);
+        osc.stop(now + decay + 0.05);
+    });
+
+    // brief filtered-noise "hammer" transient right at the attack
+    const hammerBufferSize = audioCtx.sampleRate * 0.02;
+    const hammerBuffer = audioCtx.createBuffer(1, hammerBufferSize, audioCtx.sampleRate);
+    const hammerData = hammerBuffer.getChannelData(0);
+    for (let i = 0; i < hammerBufferSize; i++) {
+        hammerData[i] = (Math.random() * 2 - 1) * (1 - i / hammerBufferSize);
+    }
+
+    const hammerSource = audioCtx.createBufferSource();
+    hammerSource.buffer = hammerBuffer;
+
+    const hammerFilter = audioCtx.createBiquadFilter();
+    hammerFilter.type = 'bandpass';
+    hammerFilter.frequency.value = Math.min(freq * 4, 8000);
+    hammerFilter.Q.value = 0.7;
+
+    const hammerGain = audioCtx.createGain();
+    hammerGain.gain.setValueAtTime(0.12, now);
+    hammerGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+
+    hammerSource.connect(hammerFilter);
+    hammerFilter.connect(hammerGain);
+    hammerGain.connect(noteBus);
+
+    hammerSource.start(now);
+    hammerSource.stop(now + 0.03);
+};
+
 const listenToClear = () => {
     const clearButton = document.getElementById('clearBtn');
     clearButton.addEventListener('click', () => {
@@ -211,10 +314,12 @@ const listenToClear = () => {
 const listenToDrumToggle = () => {
     const toggle = document.getElementById('drumToggle');
     const drumSlider = document.getElementById('drumVolume');
+    const channel = document.getElementById('drumChannel');
 
     toggle.addEventListener('change', () => {
         drumEnabled = toggle.checked;
         gridEl.style.display = drumEnabled ? '' : 'none';
+        channel.classList.toggle('disabled', !drumEnabled);
 
         if (!drumEnabled) {
             drumMasterGain.gain.value = 0;
@@ -227,15 +332,35 @@ const listenToDrumToggle = () => {
 const listenToSynthToggle = () => {
     const toggle = document.getElementById('synthToggle');
     const synthSlider = document.getElementById('synthVolume');
+    const channel = document.getElementById('synthChannel');
 
     toggle.addEventListener('change', () => {
         synthEnabled = toggle.checked;
         synthGridEl.style.display = synthEnabled ? '' : 'none';
+        channel.classList.toggle('disabled', !synthEnabled);
 
         if (!synthEnabled) {
             synthMasterGain.gain.value = 0;
         } else {
             synthMasterGain.gain.value = parseFloat(synthSlider.value);
+        }
+    });
+};
+
+const listenToPianoToggle = () => {
+    const toggle = document.getElementById('pianoToggle');
+    const pianoSlider = document.getElementById('pianoVolume');
+    const channel = document.getElementById('pianoChannel');
+
+    toggle.addEventListener('change', () => {
+        pianoEnabled = toggle.checked;
+        pianoGridEl.style.display = pianoEnabled ? '' : 'none';
+        channel.classList.toggle('disabled', !pianoEnabled);
+
+        if (!pianoEnabled) {
+            pianoMasterGain.gain.value = 0;
+        } else {
+            pianoMasterGain.gain.value = parseFloat(pianoSlider.value);
         }
     });
 };
@@ -264,9 +389,11 @@ const listenToPlay = () => {
 const listenToVolumes = () => {
     const drumSlider = document.getElementById('drumVolume');
     const synthSlider = document.getElementById('synthVolume');
+    const pianoSlider = document.getElementById('pianoVolume');
 
     drumMasterGain.gain.value = parseFloat(drumSlider.value);
     synthMasterGain.gain.value = parseFloat(synthSlider.value);
+    pianoMasterGain.gain.value = parseFloat(pianoSlider.value);
 
     drumSlider.addEventListener('input', () => {
         drumMasterGain.gain.value = parseFloat(drumSlider.value);
@@ -274,6 +401,10 @@ const listenToVolumes = () => {
 
     synthSlider.addEventListener('input', () => {
         synthMasterGain.gain.value = parseFloat(synthSlider.value);
+    });
+
+    pianoSlider.addEventListener('input', () => {
+        pianoMasterGain.gain.value = parseFloat(pianoSlider.value);
     });
 };
 
@@ -311,8 +442,10 @@ const buildGrid = () => {
     });
 };
 
-const buildSynthGrid = () => {
-    synthNotes.forEach((note, rowIndex) => {
+// Shared builder for note-based grids (synth / piano), since both
+// use the same row/cell structure and only differ in the play function.
+const buildNoteGrid = (containerEl, notes, playFn) => {
+    notes.forEach((note, rowIndex) => {
         const row = document.createElement('div');
         row.className = 'row';
 
@@ -326,7 +459,7 @@ const buildSynthGrid = () => {
             if (audioCtx.state === 'suspended') {
                 audioCtx.resume();
             }
-            playSynthNote(note.freq, audioCtx.currentTime);
+            playFn(note.freq, audioCtx.currentTime);
         });
 
         for (let step = 0; step < STEPS; step++) {
@@ -341,25 +474,20 @@ const buildSynthGrid = () => {
             });
         }
 
-        synthRowsEl.appendChild(row);
+        containerEl.appendChild(row);
     });
 };
 
-const updateSynthLabels = (octave) => {
-    synthNotes = generateSynthNotes(octave);
-
-    const labels = synthGridEl.querySelectorAll('.label');
-
-    labels.forEach((label, index) => {
-        label.textContent = synthNotes[index].name;
-    });
-};
+const buildSynthGrid = () => buildNoteGrid(synthRowsEl, synthNotes, playSynthNote);
+const buildPianoGrid = () => buildNoteGrid(pianoRowsEl, pianoNotes, playPianoNote);
 
 const init = () => {
     gridEl = document.getElementById('grid');
     synthGridEl = document.getElementById('synthGrid');
+    pianoGridEl = document.getElementById('pianoGrid');
     drumRowsEl = document.getElementById('drumRows');
     synthRowsEl = document.getElementById('synthRows');
+    pianoRowsEl = document.getElementById('pianoRows');
 
     document.querySelectorAll('input[type="range"]').forEach((slider) => {
         slider.style.setProperty('--accent', slider.dataset.accent);
@@ -368,12 +496,14 @@ const init = () => {
     loadSounds();
     buildGrid();
     buildSynthGrid();
+    buildPianoGrid();
     listenToPlay();
     listenToClear();
     listenToVolumes();
     listenToVolumeDisplays();
     listenToSynthToggle();
     listenToDrumToggle();
+    listenToPianoToggle();
 };
 
 document.addEventListener('DOMContentLoaded', init);
