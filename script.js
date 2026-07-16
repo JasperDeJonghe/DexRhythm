@@ -2,6 +2,9 @@ const instruments = ['kick', 'snare', 'closed hi-hat', 'open hi-hat'];
 
 const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
+let synthEnabled = true;
+let drumEnabled = true;
+
 const octaveFrequencies = {
     1: 32.7,
     2: 65.41,
@@ -12,16 +15,22 @@ const octaveFrequencies = {
     7: 2093.0,
 };
 
-const generateSynthNotes = (octave) => {
-    const baseFreq = octaveFrequencies[octave];
-
-    return noteNames.map((name, index) => ({
-        name: `${name}${octave}`,
-        freq: +(baseFreq * Math.pow(2, index / 12)).toFixed(2),
-    }));
+const generateSynthNotes = () => {
+    const notes = [];
+    for (let octave = 3; octave <= 6; octave++) {
+        const baseFreq = octaveFrequencies[octave];
+        noteNames.forEach((name, index) => {
+            if (octave === 6 && index > 0) return; // stop at C6
+            notes.push({
+                name: `${name}${octave}`,
+                freq: +(baseFreq * Math.pow(2, index / 12)).toFixed(2),
+            });
+        });
+    }
+    return notes.reverse();
 };
 
-let synthNotes = generateSynthNotes(3);
+let synthNotes = generateSynthNotes();
 
 const STEPS = 16;
 
@@ -29,6 +38,8 @@ const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 let gridEl;
 let synthGridEl;
+let synthRowsEl;
+let drumRowsEl;
 
 const soundFiles = {
     0: 'sounds/bass.mp3',
@@ -58,9 +69,6 @@ let nextNoteTime = 0.0;
 let timerID = null;
 let highlightTimeouts = [];
 
-const scheduleAheadTime = 0.1; // sec
-const lookahead = 25.0; // ms
-
 const highlightStep = (stepNumber) => {
     document.querySelectorAll('.cell.playing').forEach((cell) => {
         cell.classList.remove('playing');
@@ -75,35 +83,8 @@ const getTempo = () => {
     return parseFloat(document.getElementById('bpm').value) || 150;
 };
 
-const scheduleStep = (stepNumber, time) => {
-    // drums
-    let rowIndex = 0;
-    for (const row of gridEl.children) {
-        const cells = row.querySelectorAll('.cell');
-        const cell = cells[stepNumber];
-        if (cell.classList.contains('active')) {
-            playSound(rowIndex, time);
-        }
-        rowIndex++;
-    }
-
-    // synth
-    let synthRowIndex = 0;
-    for (const row of synthGridEl.children) {
-        const cells = row.querySelectorAll('.cell');
-        const cell = cells[stepNumber];
-        if (cell.classList.contains('active')) {
-            playSynthNote(synthNotes[synthRowIndex].freq, time);
-        }
-        synthRowIndex++;
-    }
-
-    const delay = (time - audioCtx.currentTime) * 1000;
-    const id = setTimeout(() => {
-        if (isPlaying) highlightStep(stepNumber);
-    }, delay);
-    highlightTimeouts.push(id);
-};
+const scheduleAheadTime = 0.1; // sec
+const lookahead = 25.0; // ms
 
 const scheduler = () => {
     while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
@@ -114,6 +95,40 @@ const scheduler = () => {
         currentStep = (currentStep + 1) % STEPS;
     }
     timerID = setTimeout(scheduler, lookahead);
+};
+
+const scheduleStep = (stepNumber, time) => {
+    // drums
+    if (drumEnabled) {
+        let rowIndex = 0;
+        for (const row of drumRowsEl.children) {
+            const cells = row.querySelectorAll('.cell');
+            const cell = cells[stepNumber];
+            if (cell.classList.contains('active')) {
+                playSound(rowIndex, time);
+            }
+            rowIndex++;
+        }
+    }
+
+    // synth
+    if (synthEnabled) {
+        let synthRowIndex = 0;
+        for (const row of synthRowsEl.children) {
+            const cells = row.querySelectorAll('.cell');
+            const cell = cells[stepNumber];
+            if (cell.classList.contains('active')) {
+                playSynthNote(synthNotes[synthRowIndex].freq, time);
+            }
+            synthRowIndex++;
+        }
+    }
+
+    const delay = (time - audioCtx.currentTime) * 1000;
+    const id = setTimeout(() => {
+        if (isPlaying) highlightStep(stepNumber);
+    }, delay);
+    highlightTimeouts.push(id);
 };
 
 const play = () => {
@@ -193,6 +208,38 @@ const listenToClear = () => {
     });
 };
 
+const listenToDrumToggle = () => {
+    const toggle = document.getElementById('drumToggle');
+    const drumSlider = document.getElementById('drumVolume');
+
+    toggle.addEventListener('change', () => {
+        drumEnabled = toggle.checked;
+        gridEl.style.display = drumEnabled ? '' : 'none';
+
+        if (!drumEnabled) {
+            drumMasterGain.gain.value = 0;
+        } else {
+            drumMasterGain.gain.value = parseFloat(drumSlider.value);
+        }
+    });
+};
+
+const listenToSynthToggle = () => {
+    const toggle = document.getElementById('synthToggle');
+    const synthSlider = document.getElementById('synthVolume');
+
+    toggle.addEventListener('change', () => {
+        synthEnabled = toggle.checked;
+        synthGridEl.style.display = synthEnabled ? '' : 'none';
+
+        if (!synthEnabled) {
+            synthMasterGain.gain.value = 0;
+        } else {
+            synthMasterGain.gain.value = parseFloat(synthSlider.value);
+        }
+    });
+};
+
 const listenToVolumeDisplays = () => {
     document.querySelectorAll('input[type="range"]').forEach((slider) => {
         const valueDisplay = document.getElementById(`${slider.id}Value`);
@@ -260,7 +307,7 @@ const buildGrid = () => {
             });
         }
 
-        gridEl.appendChild(row);
+        drumRowsEl.appendChild(row);
     });
 };
 
@@ -294,7 +341,7 @@ const buildSynthGrid = () => {
             });
         }
 
-        synthGridEl.appendChild(row);
+        synthRowsEl.appendChild(row);
     });
 };
 
@@ -311,14 +358,11 @@ const updateSynthLabels = (octave) => {
 const init = () => {
     gridEl = document.getElementById('grid');
     synthGridEl = document.getElementById('synthGrid');
+    drumRowsEl = document.getElementById('drumRows');
+    synthRowsEl = document.getElementById('synthRows');
 
     document.querySelectorAll('input[type="range"]').forEach((slider) => {
         slider.style.setProperty('--accent', slider.dataset.accent);
-    });
-
-    document.getElementById('octaveSelect').addEventListener('change', (e) => {
-        synthNotes = generateSynthNotes(Number(e.target.value));
-        updateSynthLabels(Number(e.target.value));
     });
 
     loadSounds();
@@ -328,6 +372,8 @@ const init = () => {
     listenToClear();
     listenToVolumes();
     listenToVolumeDisplays();
+    listenToSynthToggle();
+    listenToDrumToggle();
 };
 
 document.addEventListener('DOMContentLoaded', init);
