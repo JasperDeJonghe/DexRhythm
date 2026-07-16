@@ -15,17 +15,31 @@
     <div class="drum-machine">
         <h1>Dex <span style="color: #ff4d1c;">Rhythm</span></h1>
 
-        <div class="transport-panel panel">
-            <button id="playBtn" aria-label="Play">▶</button>
+        <div class="sticky-header">
+            <div class="transport-panel panel">
+                <button id="playBtn" aria-label="Play">▶</button>
 
-            <div class="bpm-stepper">
-                <span class="bpm-tag">BPM</span>
-                <input type="number" id="bpm" value="120">
+                <div class="bpm-stepper">
+                    <span class="bpm-tag">BPM</span>
+                    <input type="number" id="bpm" value="120">
+                </div>
+
+                <button id="clearBtn" class="ghost-btn">Clear</button>
+
+                <div class="transport-spacer"></div>
             </div>
 
-            <button id="clearBtn" class="ghost-btn">Clear</button>
-
-            <div class="transport-spacer"></div>
+            <div class="tab-bar panel">
+                <button class="tab-btn active" data-tab="drums">
+                    <span class="tab-swatch" style="background:#ff4d1c;"></span>Drums
+                </button>
+                <button class="tab-btn" data-tab="synth">
+                    <span class="tab-swatch" style="background:#0f8a7e;"></span>Synth
+                </button>
+                <button class="tab-btn" data-tab="piano">
+                    <span class="tab-swatch" style="background:#c9a227;"></span>Piano
+                </button>
+            </div>
         </div>
 
         <div class="mixer-panel panel">
@@ -35,7 +49,6 @@
                 <div class="channel" id="drumChannel">
                     <div class="channel-head">
                         <div class="channel-name-group">
-                            <span class="channel-swatch" style="background:#ff4d1c;"></span>
                             <span class="channel-name">Drums</span>
                         </div>
                         <input type="checkbox" id="drumToggle" checked>
@@ -49,7 +62,6 @@
                 <div class="channel" id="synthChannel">
                     <div class="channel-head">
                         <div class="channel-name-group">
-                            <span class="channel-swatch" style="background:#0f8a7e;"></span>
                             <span class="channel-name">Synth</span>
                         </div>
                         <input type="checkbox" id="synthToggle" checked>
@@ -63,7 +75,6 @@
                 <div class="channel" id="pianoChannel">
                     <div class="channel-head">
                         <div class="channel-name-group">
-                            <span class="channel-swatch" style="background:#c9a227;"></span>
                             <span class="channel-name">Piano</span>
                         </div>
                         <input type="checkbox" id="pianoToggle" checked>
@@ -78,16 +89,19 @@
 
         <div class="grid panel" id="grid">
             <h2 class="section-title">Drums</h2>
+            <div class="muted-note" id="drumMutedNote" style="display:none;">Drums are muted — flip the switch in the mixer to edit and hear this pattern.</div>
             <div class="drum-rows" id="drumRows"></div>
         </div>
 
-        <div id="synthGrid" class="grid panel synth-grid">
+        <div id="synthGrid" class="grid panel synth-grid" style="display:none;">
             <h2 class="section-title">Synth</h2>
+            <div class="muted-note" id="synthMutedNote" style="display:none;">Synth is muted — flip the switch in the mixer to edit and hear this pattern.</div>
             <div class="synth-rows" id="synthRows"></div>
         </div>
 
-        <div id="pianoGrid" class="grid panel piano-grid">
+        <div id="pianoGrid" class="grid panel piano-grid" style="display:none;">
             <h2 class="section-title">Piano</h2>
+            <div class="muted-note" id="pianoMutedNote" style="display:none;">Piano is muted — flip the switch in the mixer to edit and hear this pattern.</div>
             <div class="piano-rows" id="pianoRows"></div>
         </div>
     </div>

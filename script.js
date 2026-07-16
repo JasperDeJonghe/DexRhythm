@@ -5,6 +5,7 @@ const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', '
 let synthEnabled = true;
 let drumEnabled = true;
 let pianoEnabled = true;
+let activeTab = 'drums'; // 'drums' | 'synth' | 'piano' — which grid is on screen
 
 const octaveFrequencies = {
     1: 32.7,
@@ -41,9 +42,12 @@ const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let gridEl;
 let synthGridEl;
 let pianoGridEl;
-let synthRowsEl;
 let drumRowsEl;
+let synthRowsEl;
 let pianoRowsEl;
+let drumMutedNoteEl;
+let synthMutedNoteEl;
+let pianoMutedNoteEl;
 
 const soundFiles = {
     0: 'sounds/bass.mp3',
@@ -311,6 +315,9 @@ const listenToClear = () => {
     });
 };
 
+// Mute now dims the mixer strip and swaps that instrument's grid for a
+// short note, rather than collapsing the whole panel — so switching a
+// channel off doesn't yank the page layout around while you're editing.
 const listenToDrumToggle = () => {
     const toggle = document.getElementById('drumToggle');
     const drumSlider = document.getElementById('drumVolume');
@@ -318,14 +325,11 @@ const listenToDrumToggle = () => {
 
     toggle.addEventListener('change', () => {
         drumEnabled = toggle.checked;
-        gridEl.style.display = drumEnabled ? '' : 'none';
         channel.classList.toggle('disabled', !drumEnabled);
+        drumRowsEl.style.display = drumEnabled ? '' : 'none';
+        drumMutedNoteEl.style.display = drumEnabled ? 'none' : '';
 
-        if (!drumEnabled) {
-            drumMasterGain.gain.value = 0;
-        } else {
-            drumMasterGain.gain.value = parseFloat(drumSlider.value);
-        }
+        drumMasterGain.gain.value = drumEnabled ? parseFloat(drumSlider.value) : 0;
     });
 };
 
@@ -336,14 +340,11 @@ const listenToSynthToggle = () => {
 
     toggle.addEventListener('change', () => {
         synthEnabled = toggle.checked;
-        synthGridEl.style.display = synthEnabled ? '' : 'none';
         channel.classList.toggle('disabled', !synthEnabled);
+        synthRowsEl.style.display = synthEnabled ? '' : 'none';
+        synthMutedNoteEl.style.display = synthEnabled ? 'none' : '';
 
-        if (!synthEnabled) {
-            synthMasterGain.gain.value = 0;
-        } else {
-            synthMasterGain.gain.value = parseFloat(synthSlider.value);
-        }
+        synthMasterGain.gain.value = synthEnabled ? parseFloat(synthSlider.value) : 0;
     });
 };
 
@@ -354,14 +355,11 @@ const listenToPianoToggle = () => {
 
     toggle.addEventListener('change', () => {
         pianoEnabled = toggle.checked;
-        pianoGridEl.style.display = pianoEnabled ? '' : 'none';
         channel.classList.toggle('disabled', !pianoEnabled);
+        pianoRowsEl.style.display = pianoEnabled ? '' : 'none';
+        pianoMutedNoteEl.style.display = pianoEnabled ? 'none' : '';
 
-        if (!pianoEnabled) {
-            pianoMasterGain.gain.value = 0;
-        } else {
-            pianoMasterGain.gain.value = parseFloat(pianoSlider.value);
-        }
+        pianoMasterGain.gain.value = pianoEnabled ? parseFloat(pianoSlider.value) : 0;
     });
 };
 
@@ -405,6 +403,25 @@ const listenToVolumes = () => {
 
     pianoSlider.addEventListener('input', () => {
         pianoMasterGain.gain.value = parseFloat(pianoSlider.value);
+    });
+};
+
+// Only the active tab's grid is displayed — the other two stay built
+// and still play, they just aren't taking up scroll space.
+const updateGridVisibility = () => {
+    gridEl.style.display = activeTab === 'drums' ? '' : 'none';
+    synthGridEl.style.display = activeTab === 'synth' ? '' : 'none';
+    pianoGridEl.style.display = activeTab === 'piano' ? '' : 'none';
+};
+
+const listenToTabs = () => {
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    tabButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            activeTab = btn.dataset.tab;
+            tabButtons.forEach((b) => b.classList.toggle('active', b === btn));
+            updateGridVisibility();
+        });
     });
 };
 
@@ -488,6 +505,9 @@ const init = () => {
     drumRowsEl = document.getElementById('drumRows');
     synthRowsEl = document.getElementById('synthRows');
     pianoRowsEl = document.getElementById('pianoRows');
+    drumMutedNoteEl = document.getElementById('drumMutedNote');
+    synthMutedNoteEl = document.getElementById('synthMutedNote');
+    pianoMutedNoteEl = document.getElementById('pianoMutedNote');
 
     document.querySelectorAll('input[type="range"]').forEach((slider) => {
         slider.style.setProperty('--accent', slider.dataset.accent);
@@ -504,6 +524,8 @@ const init = () => {
     listenToSynthToggle();
     listenToDrumToggle();
     listenToPianoToggle();
+    listenToTabs();
+    updateGridVisibility();
 };
 
 document.addEventListener('DOMContentLoaded', init);
